@@ -58,23 +58,30 @@ function utils.screenToWorld(cursorX, cursorY, screenX, screenY)
     local up = utils.normalizeVector(utils.crossProduct(right, forward))
 
     local direction = utils.normalizeVector(forward + right * offsetX + up * offsetY)
-    return camPos, camPos + direction * 1000.0
+    return camPos, camPos + direction * 2000.0
 end
 
 function utils.raycastFromMouse(screenX, screenY)
     local cursorX, cursorY = utils.getCursorScreenPosition()
     local startPos, endPos = utils.screenToWorld(cursorX, cursorY, screenX, screenY)
 
-    local rayHandle = StartShapeTestRay(startPos.x, startPos.y, startPos.z, endPos.x, endPos.y, endPos.z, -1, 0, 4)
+    local rayHandle = StartShapeTestRay(startPos.x, startPos.y, startPos.z, endPos.x, endPos.y, endPos.z, -1, 0, 7)
     local _, hit, hitCoords, surfaceNormal, hitEntity = GetShapeTestResult(rayHandle)
 
     local entityType = 0
-    if hitEntity ~= 0 then
+    if hitEntity ~= 0 and DoesEntityExist(hitEntity) then
         if not lastEntityType[hitEntity] then
             local success, result = pcall(GetEntityType, hitEntity)
             lastEntityType[hitEntity] = success and result or 0
         end
         entityType = lastEntityType[hitEntity]
+        if not DoesEntityExist(hitEntity) then
+            lastEntityType[hitEntity] = nil
+            entityType = 0
+            hitEntity = 0
+        end
+    elseif lastEntityType[hitEntity] then
+        lastEntityType[hitEntity] = nil
     end
 
     return hit, hitEntity, hitCoords, surfaceNormal, startPos, endPos, entityType
