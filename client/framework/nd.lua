@@ -45,4 +45,6 @@ function utils.hasPlayerGotGroup(filter)
             end
         end
     end
+
+    return false
 end

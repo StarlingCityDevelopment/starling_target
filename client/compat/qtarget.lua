@@ -116,8 +116,8 @@ exportHandler('AddTargetBone', function(bones, options)
     if type(bones) ~= 'table' then bones = { bones } end
     options = convert(options)
 
-    for _, v in pairs(options) do
-        v.bones = bones
+    for i = 1, #options do
+        options[i].bones = bones
     end
 
     exports.ox_target:addGlobalVehicle(options)

@@ -13,5 +13,6 @@
   "debug_object": "(Debug) Object",
   "debug_global": "(Debug) Global",
   "toggle_targeting": "Toggle targeting",
-  "go_back": "Go back"
+  "go_back": "Go back",
+  "close_menu": "Close"
 }

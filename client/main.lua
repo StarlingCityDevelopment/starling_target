@@ -27,6 +27,10 @@ local currentMenu
 local menuChanged
 local menuHistory = {}
 local nearbyZones
+local zones = {}
+local frozenEntity
+local frozenEntityType
+local frozenEntityModel
 
 -- Toggle ox_target, instead of holding the hotkey
 local toggleHotkey = GetConvarInt('ox_target:toggleHotkey', 0) == 1
@@ -54,6 +58,10 @@ local function shouldHide(option, distance, endCoords, entityHit, entityType, en
     end
 
     if option.items and not utils.hasPlayerGotItems(option.items, option.anyItem) then
+        return true
+    end
+
+    if not option.me and entityHit == cache.ped then
         return true
     end
 
@@ -130,20 +138,36 @@ local function startTargeting()
 
     local flag = 511
     local hit, entityHit, endCoords, distance, lastEntity, entityType, entityModel, hasTarget, zonesChanged
-    local zones = {}
+    table.wipe(zones)
 
     CreateThread(function()
         local dict, texture = utils.getTexture()
         local lastCoords
 
-        while state.isActive() do
+        while state.isActive() or state.isNuiFocused() do
             lastCoords = endCoords == vec0 and lastCoords or endCoords or vec0
 
-            if debug then
-                DrawMarker(28, lastCoords.x, lastCoords.y, lastCoords.z, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2, 0.2,
-                    0.2,
-                    ---@diagnostic disable-next-line: param-type-mismatch
-                    255, 42, 24, 100, false, false, 0, true, false, false, false)
+            if debug and not state.isNuiFocused() then
+                DrawSphere(lastCoords.x, lastCoords.y, lastCoords.z, 0.05, 255, 0, 0, 0.5)
+            end
+
+            if hasTarget and not state.isNuiFocused() then
+                local cursorX, cursorY = utils.getCursorScreenPosition()
+                SetTextScale(0.35, 0.35)
+                SetTextFont(4)
+                SetTextProportional(true)
+                SetTextColour(255, 255, 255, 215)
+                SetTextEntry("STRING")
+                SetTextCentre(true)
+                AddTextComponentString("intéragir")
+                EndTextCommandDisplayText(cursorX + 0.004, cursorY + 0.025)
+
+                if options.size ~= 0 and entityType ~= 0 then
+                    SetMouseCursorStyle(5)
+                    SetEntityAlpha(entityHit, 150, false)
+                end
+            else
+                SetMouseCursorStyle(1)
             end
 
             utils.drawZoneSprites(dict, texture)
@@ -157,18 +181,52 @@ local function startTargeting()
                 DisableControlAction(0, 1, true)
                 DisableControlAction(0, 2, true)
 
-                if not hasTarget or options and IsDisabledControlJustPressed(0, 25) then
+                if not hasTarget or (options and IsDisabledControlJustPressed(0, 25)) then
                     state.setNuiFocus(false, false)
+                    frozenEntity = nil
+                    frozenEntityType = nil
+                    frozenEntityModel = nil
                 end
             elseif hasTarget and IsDisabledControlJustPressed(0, mouseButton) then
-                state.setNuiFocus(true, true)
+                if options or zones then
+                    frozenEntity = entityHit
+                    frozenEntityType = entityType
+                    frozenEntityModel = entityModel
+                    local cursorX, cursorY = utils.getCursorScreenPosition()
+                    SendNuiMessage('{"event": "visible", "state": true}')
+                    SendNuiMessage(json.encode({
+                        event = 'setTarget',
+                        options = options,
+                        zones = zones,
+                        cursorX = cursorX,
+                        cursorY = cursorY,
+                    }, { sort_keys = true }))
+                    state.setNuiFocus(true, true)
+                    state.setActive(false)
+                    if lastEntity > 0 then
+                        ResetEntityAlpha(lastEntity)
+                    end
+                end
             end
 
             Wait(0)
         end
 
+        if lastEntity > 0 then
+            ResetEntityAlpha(lastEntity)
+        end
+
         SetStreamedTextureDictAsNoLongerNeeded(dict)
+
+        state.setNuiFocus(false)
+        SendNuiMessage('{"event": "visible", "state": false}')
+        table.wipe(currentTarget)
+        options:wipe()
+
+        if nearbyZones then table.wipe(nearbyZones) end
     end)
+
+    local screenX, screenY = GetActiveScreenResolution()
 
     while state.isActive() do
         if not state.isNuiFocused() and lib.progressActive() then
@@ -176,34 +234,19 @@ local function startTargeting()
             break
         end
 
+        if not state.isNuiFocused() then
+            SetMouseCursorThisFrame()
+        end
+
         local playerCoords = GetEntityCoords(cache.ped)
-        hit, entityHit, endCoords = lib.raycast.fromCamera(flag, 4, 20)
+        hit, entityHit, endCoords, _, _, _, entityType = utils.raycastFromMouse(screenX, screenY)
         distance = #(playerCoords - endCoords)
-
-        if entityHit ~= 0 and entityHit ~= lastEntity then
-            local success, result = pcall(GetEntityType, entityHit)
-            entityType = success and result or 0
-        end
-
-        if entityType == 0 then
-            local _flag = flag == 511 and 26 or 511
-            local _hit, _entityHit, _endCoords = lib.raycast.fromCamera(_flag, 4, 20)
-            local _distance = #(playerCoords - _endCoords)
-
-            if _distance < distance then
-                flag, hit, entityHit, endCoords, distance = _flag, _hit, _entityHit, _endCoords, _distance
-
-                if entityHit ~= 0 then
-                    local success, result = pcall(GetEntityType, entityHit)
-                    entityType = success and result or 0
-                end
-            end
-        end
 
         nearbyZones, zonesChanged = utils.getNearbyZones(endCoords)
 
         local entityChanged = entityHit ~= lastEntity
-        local newOptions = (zonesChanged or entityChanged or menuChanged) and true
+        local newOptions = (not state.isNuiFocused() or menuChanged) and (zonesChanged or entityChanged or menuChanged) and
+            true
 
         if entityHit > 0 and entityChanged then
             currentMenu = nil
@@ -228,18 +271,33 @@ local function startTargeting()
             end
         end
 
-        if hasTarget and (zonesChanged or entityChanged and hasTarget > 1) then
-            SendNuiMessage('{"event": "leftTarget"}')
+        if not state.isNuiFocused() or menuChanged then
+            if not state.isNuiFocused() then
+                if hasTarget and (zonesChanged or (entityChanged and hasTarget > 1)) then
+                    SendNuiMessage('{"event": "leftTarget"}')
 
-            if entityChanged then options:wipe() end
+                    if entityChanged then options:wipe() end
 
-            if debug and lastEntity > 0 then SetEntityDrawOutline(lastEntity, false) end
+                    if debug and lastEntity > 0 then SetEntityDrawOutline(lastEntity, false) end
 
-            hasTarget = false
+                    hasTarget = false
+                end
+            end
+
+            if menuChanged and not currentMenu then
+                local targetEntity = frozenEntity or (entityHit > 0 and entityHit or lastEntity)
+                local targetEntityType = frozenEntityType or entityType
+                local targetEntityModel = frozenEntityModel or entityModel
+                if targetEntity and targetEntity > 0 and targetEntityModel then
+                    options:set(targetEntity, targetEntityType, targetEntityModel)
+                end
+            elseif not menuChanged and newOptions and entityModel and entityHit > 0 then
+                options:set(entityHit, entityType, entityModel)
+            end
         end
 
-        if newOptions and entityModel and entityHit > 0 then
-            options:set(entityHit, entityType, entityModel)
+        if lastEntity ~= entityHit then
+            ResetEntityAlpha(lastEntity)
         end
 
         lastEntity = entityHit
@@ -249,42 +307,48 @@ local function startTargeting()
         local hidden = 0
         local totalOptions = 0
 
-        for k, v in pairs(options) do
-            local optionCount = #v
-            local dist = k == '__global' and 0 or distance
-            totalOptions += optionCount
+        if not state.isNuiFocused() or menuChanged then
+            local checkEntity = state.isNuiFocused() and frozenEntity or entityHit
+            local checkEntityType = state.isNuiFocused() and frozenEntityType or entityType
+            local checkEntityModel = state.isNuiFocused() and frozenEntityModel or entityModel
 
-            for i = 1, optionCount do
-                local option = v[i]
-                local hide = shouldHide(option, dist, endCoords, entityHit, entityType, entityModel)
+            for k, v in pairs(options) do
+                local optionCount = #v
+                local dist = k == '__global' and 0 or distance
+                totalOptions += optionCount
 
-                if option.hide ~= hide then
-                    option.hide = hide
-                    newOptions = true
+                for i = 1, optionCount do
+                    local option = v[i]
+                    local hide = shouldHide(option, dist, endCoords, checkEntity, checkEntityType, checkEntityModel)
+
+                    if option.hide ~= hide then
+                        option.hide = hide
+                        newOptions = true
+                    end
+
+                    if hide then hidden += 1 end
                 end
-
-                if hide then hidden += 1 end
             end
-        end
 
-        if zonesChanged then table.wipe(zones) end
+            if zonesChanged then table.wipe(zones) end
 
-        for i = 1, #nearbyZones do
-            local zoneOptions = nearbyZones[i].options
-            local optionCount = #zoneOptions
-            totalOptions += optionCount
-            zones[i] = zoneOptions
+            for i = 1, #nearbyZones do
+                local zoneOptions = nearbyZones[i].options
+                local optionCount = #zoneOptions
+                totalOptions += optionCount
+                zones[i] = zoneOptions
 
-            for j = 1, optionCount do
-                local option = zoneOptions[j]
-                local hide = shouldHide(option, distance, endCoords, entityHit)
+                for j = 1, optionCount do
+                    local option = zoneOptions[j]
+                    local hide = shouldHide(option, distance, endCoords, checkEntity)
 
-                if option.hide ~= hide then
-                    option.hide = hide
-                    newOptions = true
+                    if option.hide ~= hide then
+                        option.hide = hide
+                        newOptions = true
+                    end
+
+                    if hide then hidden += 1 end
                 end
-
-                if hide then hidden += 1 end
             end
         end
 
@@ -293,30 +357,32 @@ local function startTargeting()
                 hasTarget = true
             end
 
-            if hasTarget and hidden == totalOptions then
-                if hasTarget and hasTarget ~= 1 then
+            if not menuChanged and hasTarget and hidden == totalOptions then
+                if hasTarget ~= 1 then
                     hasTarget = false
                     SendNuiMessage('{"event": "leftTarget"}')
                 end
-            elseif menuChanged or hasTarget ~= 1 and hidden ~= totalOptions then
+            elseif menuChanged or (hasTarget ~= 1 and hidden ~= totalOptions) then
                 hasTarget = options.size
 
                 if currentMenu and options.__global[1]?.name ~= 'builtin:goback' then
-                    table.insert(options.__global, 1,
-                        {
-                            icon = 'fa-solid fa-circle-chevron-left',
-                            label = locale('go_back'),
-                            name = 'builtin:goback',
-                            menuName = currentMenu,
-                            openMenu = 'home'
-                        })
+                    table.insert(options.__global, 1, {
+                        icon = 'fa-solid fa-circle-chevron-left',
+                        label = locale('go_back'),
+                        name = 'builtin:goback',
+                        menuName = currentMenu,
+                        openMenu = 'home',
+                        me = true
+                    })
                 end
 
-                SendNuiMessage(json.encode({
-                    event = 'setTarget',
-                    options = options,
-                    zones = zones,
-                }, { sort_keys = true }))
+                if state.isNuiFocused() then
+                    SendNuiMessage(json.encode({
+                        event = 'setTarget',
+                        options = options,
+                        zones = zones,
+                    }, { sort_keys = true }))
+                end
             end
 
             menuChanged = false
@@ -330,19 +396,17 @@ local function startTargeting()
             flag = flag == 511 and 26 or 511
         end
 
-        Wait(hit and 50 or 100)
+        Wait(0)
     end
 
     if lastEntity and debug then
         SetEntityDrawOutline(lastEntity, false)
     end
 
-    state.setNuiFocus(false)
-    SendNuiMessage('{"event": "visible", "state": false}')
-    table.wipe(currentTarget)
-    options:wipe()
-
-    if nearbyZones then table.wipe(nearbyZones) end
+    if not state.isNuiFocused() then
+        state.setNuiFocus(false)
+        SendNuiMessage('{"event": "visible", "state": false}')
+    end
 end
 
 do
@@ -405,6 +469,12 @@ end
 RegisterNUICallback('select', function(data, cb)
     cb(1)
 
+    if data[1] == 'builtin' and data[2] == 'close' then
+        state.setNuiFocus(false)
+        state.setActive(false)
+        return
+    end
+
     local zone = data[3] and nearbyZones[data[3]]
 
     ---@type OxTargetOption?
@@ -429,6 +499,36 @@ RegisterNUICallback('select', function(data, cb)
             currentMenu = option.openMenu ~= 'home' and option.openMenu or nil
 
             options:wipe()
+
+            if frozenEntity and frozenEntity > 0 and frozenEntityModel then
+                options:set(frozenEntity, frozenEntityType, frozenEntityModel)
+            end
+
+            if currentMenu and options.__global[1]?.name ~= 'builtin:goback' then
+                table.insert(options.__global, 1, {
+                    icon = 'fa-solid fa-circle-chevron-left',
+                    label = locale('go_back'),
+                    name = 'builtin:goback',
+                    menuName = currentMenu,
+                    openMenu = 'home',
+                    me = true
+                })
+            end
+
+            for k, v in pairs(options) do
+                for i = 1, #v do
+                    local opt = v[i]
+                    opt.hide = shouldHide(opt, 0, currentTarget.coords, frozenEntity, frozenEntityType, frozenEntityModel)
+                end
+            end
+
+            SendNuiMessage(json.encode({
+                event = 'setTarget',
+                options = options,
+                zones = zones,
+            }, { sort_keys = true }))
+
+            return
         else
             state.setNuiFocus(false)
         end
@@ -448,6 +548,8 @@ RegisterNUICallback('select', function(data, cb)
         end
 
         if option.menuName == 'home' then return end
+
+        state.setActive(false)
     end
 
     if not option?.openMenu and IsNuiFocused() then

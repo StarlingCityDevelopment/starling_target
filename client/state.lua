@@ -10,10 +10,6 @@ end
 ---@param value boolean
 function state.setActive(value)
     isActive = value
-
-    if value then
-        SendNuiMessage('{"event": "visible", "state": true}')
-    end
 end
 
 local nuiFocus = false

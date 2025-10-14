@@ -12,5 +12,6 @@
   "debug_vehicle": "(Debug) Véhicule",
   "debug_object": "(Debug) Objet",
   "toggle_targeting": "Afficher le système d'interaction",
-  "go_back": "Retour"
+  "go_back": "Retour",
+  "close_menu": "Fermer"
 }

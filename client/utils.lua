@@ -1,35 +1,83 @@
 local utils = {}
+local lastEntityType = {}
 
-local GetWorldCoordFromScreenCoord = GetWorldCoordFromScreenCoord
-local StartShapeTestLosProbe = StartShapeTestLosProbe
-local GetShapeTestResultIncludingMaterial = GetShapeTestResultIncludingMaterial
+local TEXTURE_DICT, TEXTURE_NAME = 'shared', 'emptydot_32'
 
----@param flag number
----@return boolean hit
----@return number entityHit
----@return vector3 endCoords
----@return vector3 surfaceNormal
----@return number materialHash
-function utils.raycastFromCamera(flag)
-    local coords, normal = GetWorldCoordFromScreenCoord(0.5, 0.5)
-    local destination = coords + normal * 10
-    local handle = StartShapeTestLosProbe(coords.x, coords.y, coords.z, destination.x, destination.y, destination.z,
-        flag, cache.ped, 4)
-
-    while true do
-        Wait(0)
-        local retval, hit, endCoords, surfaceNormal, materialHash, entityHit = GetShapeTestResultIncludingMaterial(
-        handle)
-
-        if retval ~= 1 then
-            ---@diagnostic disable-next-line: return-type-mismatch
-            return hit, entityHit, endCoords, surfaceNormal, materialHash
-        end
-    end
-end
+local GetControlNormal = GetControlNormal
+local GetGameplayCamCoord = GetGameplayCamCoord
+local GetGameplayCamRot = GetGameplayCamRot
+local GetGameplayCamFov = GetGameplayCamFov
+local StartShapeTestRay = StartShapeTestRay
+local GetShapeTestResult = GetShapeTestResult
+local sqrt, rad, sin, cos, tan = math.sqrt, math.rad, math.sin, math.cos, math.tan
 
 function utils.getTexture()
-    return lib.requestStreamedTextureDict('shared'), 'emptydot_32'
+    return lib.requestStreamedTextureDict(TEXTURE_DICT), TEXTURE_NAME
+end
+
+function utils.getCursorScreenPosition()
+    return GetControlNormal(0, 239), GetControlNormal(0, 240)
+end
+
+function utils.crossProduct(a, b)
+    return vector3(
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    )
+end
+
+function utils.normalizeVector(vec)
+    local length = sqrt(vec.x * vec.x + vec.y * vec.y + vec.z * vec.z)
+    return length > 0 and vector3(vec.x / length, vec.y / length, vec.z / length) or vector3(0, 0, 0)
+end
+
+function utils.rotationToDirection(rot)
+    local radPitch, radYaw = rad(rot.x), rad(rot.z)
+    local cosPitch = cos(radPitch)
+    return vector3(
+        -sin(radYaw) * cosPitch,
+        cos(radYaw) * cosPitch,
+        sin(radPitch)
+    )
+end
+
+function utils.screenToWorld(cursorX, cursorY, screenX, screenY)
+    local camPos = GetGameplayCamCoord()
+    local camRot = GetGameplayCamRot(2)
+
+    local fovRadians = rad(GetGameplayCamFov()) * 0.5
+    local aspectRatio = screenX / screenY
+    local tanFov = tan(fovRadians)
+
+    local offsetX = (cursorX - 0.5) * 2.0 * aspectRatio * tanFov
+    local offsetY = (0.5 - cursorY) * 2.0 * tanFov
+
+    local forward = utils.rotationToDirection(camRot)
+    local right = utils.normalizeVector(utils.crossProduct(forward, vector3(0, 0, 1)))
+    local up = utils.normalizeVector(utils.crossProduct(right, forward))
+
+    local direction = utils.normalizeVector(forward + right * offsetX + up * offsetY)
+    return camPos, camPos + direction * 1000.0
+end
+
+function utils.raycastFromMouse(screenX, screenY)
+    local cursorX, cursorY = utils.getCursorScreenPosition()
+    local startPos, endPos = utils.screenToWorld(cursorX, cursorY, screenX, screenY)
+
+    local rayHandle = StartShapeTestRay(startPos.x, startPos.y, startPos.z, endPos.x, endPos.y, endPos.z, -1, 0, 4)
+    local _, hit, hitCoords, surfaceNormal, hitEntity = GetShapeTestResult(rayHandle)
+
+    local entityType = 0
+    if hitEntity ~= 0 then
+        if not lastEntityType[hitEntity] then
+            local success, result = pcall(GetEntityType, hitEntity)
+            lastEntityType[hitEntity] = success and result or 0
+        end
+        entityType = lastEntityType[hitEntity]
+    end
+
+    return hit, hitEntity, hitCoords, surfaceNormal, startPos, endPos, entityType
 end
 
 -- SetDrawOrigin is limited to 32 calls per frame. Set as 0 to disable.
