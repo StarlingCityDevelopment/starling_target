@@ -151,6 +151,10 @@ local function startTargeting()
                 DrawSphere(lastCoords.x, lastCoords.y, lastCoords.z, 0.05, 255, 0, 0, 0.5)
             end
 
+            if not state.isNuiFocused() then
+                SetMouseCursorThisFrame()
+            end
+
             if hasTarget and not state.isNuiFocused() then
                 local cursorX, cursorY = utils.getCursorScreenPosition()
                 SetTextScale(0.35, 0.35)
@@ -176,10 +180,10 @@ local function startTargeting()
             DisableControlAction(0, 140, true)
             DisableControlAction(0, 141, true)
             DisableControlAction(0, 142, true)
+            DisableControlAction(0, 1, true)
+            DisableControlAction(0, 2, true)
 
             if state.isNuiFocused() then
-                DisableControlAction(0, 1, true)
-                DisableControlAction(0, 2, true)
 
                 if not hasTarget or (options and IsDisabledControlJustPressed(0, 25)) then
                     state.setNuiFocus(false, false)
@@ -232,10 +236,6 @@ local function startTargeting()
         if not state.isNuiFocused() and lib.progressActive() then
             state.setActive(false)
             break
-        end
-
-        if not state.isNuiFocused() then
-            SetMouseCursorThisFrame()
         end
 
         local playerCoords = GetEntityCoords(cache.ped)
@@ -396,7 +396,7 @@ local function startTargeting()
             flag = flag == 511 and 26 or 511
         end
 
-        Wait(0)
+        Wait(75)
     end
 
     if lastEntity and debug then
