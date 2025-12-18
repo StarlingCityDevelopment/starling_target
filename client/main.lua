@@ -12,9 +12,7 @@ require 'client.compat.qtarget'
 
 local SendNuiMessage = SendNuiMessage
 local GetEntityCoords = GetEntityCoords
-local GetEntityType = GetEntityType
 local HasEntityClearLosToEntity = HasEntityClearLosToEntity
-local GetEntityBoneIndexByName = GetEntityBoneIndexByName
 local GetEntityBonePosition_2 = GetEntityBonePosition_2
 local GetEntityModel = GetEntityModel
 local IsDisabledControlJustPressed = IsDisabledControlJustPressed
@@ -75,7 +73,7 @@ local function shouldHide(option, distance, endCoords, entityHit, entityType, en
         local _type = type(bone)
 
         if _type == 'string' then
-            local boneId = GetEntityBoneIndexByName(entityHit, bone)
+            local boneId = utils.getBoneIndex(entityHit, bone)
 
             if boneId ~= -1 and #(endCoords - GetEntityBonePosition_2(entityHit, boneId)) <= 2 then
                 bone = boneId
@@ -86,7 +84,7 @@ local function shouldHide(option, distance, endCoords, entityHit, entityType, en
             local closestBone, boneDistance
 
             for j = 1, #bone do
-                local boneId = GetEntityBoneIndexByName(entityHit, bone[j])
+                local boneId = utils.getBoneIndex(entityHit, bone[j])
 
                 if boneId ~= -1 then
                     local dist = #(endCoords - GetEntityBonePosition_2(entityHit, boneId))
@@ -137,14 +135,22 @@ local function startTargeting()
     state.setActive(true)
 
     local flag = 511
-    local hit, entityHit, endCoords, distance, lastEntity, entityType, entityModel, hasTarget, zonesChanged
+    local hit, endCoords, distance, entityType, entityModel, hasTarget, zonesChanged
+    local lastEntity = 0
+    local entityHit = 0
     table.wipe(zones)
+
+    local screenX, screenY = GetActiveScreenResolution()
 
     CreateThread(function()
         local dict, texture = utils.getTexture()
         local lastCoords
 
         while state.isActive() or state.isNuiFocused() do
+            local playerCoords = GetEntityCoords(cache.ped)
+            hit, entityHit, endCoords, _, _, _, entityType = utils.raycastFromMouse(screenX, screenY)
+            distance = #(playerCoords - endCoords)
+
             lastCoords = endCoords == vec0 and lastCoords or endCoords or vec0
 
             if debug and not state.isNuiFocused() then
@@ -184,7 +190,6 @@ local function startTargeting()
             DisableControlAction(0, 2, true)
 
             if state.isNuiFocused() then
-
                 if not hasTarget or (options and IsDisabledControlJustPressed(0, 25)) then
                     state.setNuiFocus(false, false)
                     frozenEntity = nil
@@ -230,17 +235,11 @@ local function startTargeting()
         if nearbyZones then table.wipe(nearbyZones) end
     end)
 
-    local screenX, screenY = GetActiveScreenResolution()
-
     while state.isActive() do
         if not state.isNuiFocused() and lib.progressActive() then
             state.setActive(false)
             break
         end
-
-        local playerCoords = GetEntityCoords(cache.ped)
-        hit, entityHit, endCoords, _, _, _, entityType = utils.raycastFromMouse(screenX, screenY)
-        distance = #(playerCoords - endCoords)
 
         nearbyZones, zonesChanged = utils.getNearbyZones(endCoords)
 
@@ -396,7 +395,7 @@ local function startTargeting()
             flag = flag == 511 and 26 or 511
         end
 
-        Wait(75)
+        Wait(50)
     end
 
     if lastEntity and debug then

@@ -1,5 +1,6 @@
 local utils = {}
 local lastEntityType = {}
+local boneCache = {}
 
 local TEXTURE_DICT, TEXTURE_NAME = 'shared', 'emptydot_32'
 
@@ -265,6 +266,17 @@ function utils.warn(msg)
     local _, _, src = string.strsplit('\n', trace, 4)
 
     warn(('%s ^0%s\n'):format(msg, src:gsub(".-%(", '(')))
+end
+
+function utils.getBoneIndex(entityHit, boneName)
+    local model = GetEntityModel(entityHit)
+    if not boneCache[model] then boneCache[model] = {} end
+
+    if not boneCache[model][boneName] then
+        boneCache[model][boneName] = GetEntityBoneIndexByName(entityHit, boneName)
+    end
+
+    return boneCache[model][boneName]
 end
 
 return utils
