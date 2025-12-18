@@ -135,7 +135,9 @@ local function startTargeting()
     state.setActive(true)
 
     local flag = 511
-    local hit, endCoords, distance, entityType, entityModel, hasTarget, zonesChanged
+    local hit, entityType, entityModel, hasTarget, zonesChanged
+    local endCoords = vec0
+    local distance = 100
     local lastEntity = 0
     local entityHit = 0
     table.wipe(zones)
