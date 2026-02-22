@@ -8,7 +8,7 @@ game 'gta5'
 -- Resource Information
 name 'ox_target'
 author 'Overextended'
-version '1.17.3'
+version '1.18.0'
 repository 'https://github.com/communityox/ox_target'
 description ''
 
