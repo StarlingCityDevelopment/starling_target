@@ -29,6 +29,7 @@ local zones = {}
 local frozenEntity
 local frozenEntityType
 local frozenEntityModel
+local alphaEntity
 
 -- Toggle ox_target, instead of holding the hotkey
 local toggleHotkey = GetConvarInt('ox_target:toggleHotkey', 0) == 1
@@ -176,10 +177,18 @@ local function startTargeting()
 
                 if options.size ~= 0 and entityType ~= 0 then
                     SetMouseCursorStyle(5)
+                    if alphaEntity ~= entityHit then
+                        if alphaEntity then ResetEntityAlpha(alphaEntity) end
+                        alphaEntity = entityHit
+                    end
                     SetEntityAlpha(entityHit, 150, false)
                 end
             else
                 SetMouseCursorStyle(1)
+                if alphaEntity then
+                    ResetEntityAlpha(alphaEntity)
+                    alphaEntity = nil
+                end
             end
 
             utils.drawZoneSprites(dict, texture)
@@ -214,8 +223,9 @@ local function startTargeting()
                     }, { sort_keys = true }))
                     state.setNuiFocus(true, true)
                     state.setActive(false)
-                    if lastEntity > 0 then
-                        ResetEntityAlpha(lastEntity)
+                    if alphaEntity then
+                        ResetEntityAlpha(alphaEntity)
+                        alphaEntity = nil
                     end
                 end
             end
@@ -223,8 +233,9 @@ local function startTargeting()
             Wait(0)
         end
 
-        if lastEntity > 0 then
-            ResetEntityAlpha(lastEntity)
+        if alphaEntity then
+            ResetEntityAlpha(alphaEntity)
+            alphaEntity = nil
         end
 
         SetStreamedTextureDictAsNoLongerNeeded(dict)
@@ -295,10 +306,6 @@ local function startTargeting()
             elseif not menuChanged and newOptions and entityModel and entityHit > 0 then
                 options:set(entityHit, entityType, entityModel)
             end
-        end
-
-        if lastEntity ~= entityHit then
-            ResetEntityAlpha(lastEntity)
         end
 
         lastEntity = entityHit
